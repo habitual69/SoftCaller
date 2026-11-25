@@ -1,0 +1,663 @@
+//! User settings, persisted as `settings.toml` in the config folder.
+//!
+//! Every field has a default, so a partial or older file loads and missing
+//! keys take their defaults. Unknown keys are ignored.
+
+use std::fmt;
+use std::io;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+use crate::account::{Account, LocalAccount};
+
+pub const FILE_NAME: &str = "settings.toml";
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub ui: UiSettings,
+    pub sip: SipSettings,
+    pub calls: CallSettings,
+    pub audio: AudioSettings,
+    pub features: FeatureSettings,
+    pub video: VideoSettings,
+    pub recording: RecordingSettings,
+    pub hooks: crate::hooks::HookSettings,
+    /// Speed-dial buttons on the dialer.
+    pub shortcuts: Vec<Shortcut>,
+    /// Id of the account in use (one account at a time).
+    pub active_account: Option<u32>,
+    pub accounts: Vec<Account>,
+    pub local_account: LocalAccount,
+}
+
+/// Global SIP and media settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SipSettings {
+    /// Empty: "Softcaller/<version>".
+    pub user_agent: String,
+    pub rport: bool,
+    pub source_port: u16,
+    pub rtp_port_min: u16,
+    pub rtp_port_max: u16,
+    pub enable_stun: bool,
+    /// STUN servers, separated by spaces, commas or semicolons.
+    pub stun: String,
+    pub dns_srv: bool,
+    /// DNS servers for SRV lookups, separated like `stun`.
+    pub dns_srv_ns: String,
+    /// Re-create transports and re-register when the network changes.
+    pub network_changes: bool,
+    /// Enabled audio codecs in priority order, space-separated.
+    pub audio_codecs: String,
+    /// Voice activity detection: send silence as comfort noise.
+    pub vad: bool,
+    /// Echo cancellation (turns stereo codecs mono).
+    pub ec: bool,
+    pub opus_stereo: bool,
+    /// Answer incoming calls with our codec order.
+    pub force_codec: bool,
+    /// URL of a users directory to keep the contacts in sync with;
+    /// empty for none.
+    pub users_directory: String,
+    /// Write the full SIP log (holds numbers and addresses).
+    pub enable_log: bool,
+}
+
+impl Default for SipSettings {
+    fn default() -> Self {
+        Self {
+            user_agent: String::new(),
+            rport: true,
+            source_port: 0,
+            rtp_port_min: 0,
+            rtp_port_max: 0,
+            enable_stun: false,
+            stun: String::new(),
+            dns_srv: false,
+            dns_srv_ns: String::new(),
+            network_changes: true,
+            // Generic providers negotiate PCM/G.722/Opus; AMR at lower
+            // priority lets JioFiber/AirFiber lines still get audio.
+            audio_codecs: "PCMA/8000/1 PCMU/8000/1 G722/16000/1 opus/48000/2 AMR-WB/16000/1 AMR/8000/1".into(),
+            vad: false,
+            ec: true,
+            opus_stereo: false,
+            force_codec: false,
+            users_directory: String::new(),
+            enable_log: false,
+        }
+    }
+}
+
+/// Sound devices and levels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    /// Device names as pjsua reports them; empty for the system default.
+    pub input_device: String,
+    pub output_device: String,
+    pub ring_device: String,
+    /// Levels 0..=100.
+    pub volume_output: u8,
+    pub volume_input: u8,
+    pub volume_ring: u8,
+    /// Boost the microphone above the middle of its slider.
+    pub mic_amplification: bool,
+    /// Set the microphone level in software only.
+    pub sw_level_adjustment: bool,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            input_device: String::new(),
+            output_device: String::new(),
+            ring_device: String::new(),
+            volume_output: 100,
+            volume_input: 100,
+            volume_ring: 100,
+            mic_amplification: false,
+            sw_level_adjustment: false,
+        }
+    }
+}
+
+/// How DTMF digits are sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DtmfMethod {
+    /// RFC 2833, falling back to in-band.
+    #[default]
+    Auto,
+    InBand,
+    Rfc2833,
+    SipInfo,
+}
+
+/// Call behaviour.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CallSettings {
+    pub dtmf_method: DtmfMethod,
+    /// Play DTMF tones and in-call sounds locally.
+    pub local_dtmf: bool,
+    /// Accept a second call while in a call.
+    pub call_waiting: bool,
+    /// Most simultaneous calls; 0 for no limit.
+    pub max_concurrent_calls: u32,
+    /// Bring the window forward for incoming calls.
+    pub bring_to_front: bool,
+    /// Show a small caller card at the bottom-right while the window is in
+    /// the background. Answering expands it into call controls.
+    pub caller_popup: bool,
+    /// Closing the ringing screen declines instead of ignoring.
+    pub no_ignore: bool,
+    /// Dialled before a ringing contact's number to pick up its call;
+    /// empty turns pickup off.
+    pub pickup_code: String,
+    /// Transfer by sending this code and the number as DTMF, for PBXs that
+    /// transfer that way, instead of a REFER.
+    pub transfer_code: String,
+    pub use_transfer_code: bool,
+    /// Attended transfer by DTMF code and number.
+    pub attended_code: String,
+    pub use_attended_code: bool,
+    /// Do not disturb: incoming calls get 486 "Do Not Disturb".
+    pub dnd: bool,
+    /// Incoming calls rejected outright.
+    pub deny_incoming: DenyIncoming,
+    /// Answer every incoming call by itself (`all` is
+    /// the same with the switch kept on).
+    pub auto_answer: bool,
+    /// Answer by itself when the caller asks: `X-AUTOANSWER: true` or
+    /// `Call-Info: …;answer-after=N`.
+    pub auto_answer_on_request: bool,
+    /// Seconds of ringing before answering; 0 answers at once with a beep.
+    /// A caller's `answer-after` wins.
+    pub auto_answer_delay: u32,
+    /// Only these callers, separated by `;` or `|`, with `*` and `?`
+    /// wildcards; empty for everyone.
+    pub auto_answer_numbers: String,
+    /// When other calls don't stop it.
+    pub auto_answer_when: AutoAnswerWhen,
+    /// Forward incoming calls to [`Self::forwarding_number`] with a 302.
+    pub forwarding: bool,
+    /// Where calls are forwarded: a number or SIP address.
+    pub forwarding_number: String,
+    /// Seconds of ringing before forwarding; 0 forwards without ringing.
+    pub forwarding_delay: u32,
+    /// Hang up answered calls after this many seconds; 0 never.
+    pub auto_hangup: u32,
+    /// Media keys and headset buttons answer, hold and hang up during
+    /// calls.
+    pub media_keys: bool,
+    /// USB telephony headsets: hook switch, mute and redial buttons, and
+    /// their lights.
+    pub headset: bool,
+}
+
+/// When auto-answer may answer while other calls exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutoAnswerWhen {
+    /// Only without other calls.
+    #[default]
+    NoOtherCalls,
+    /// While every other call is on hold (`hold`).
+    OthersOnHold,
+    /// Always (`all`).
+    Always,
+}
+
+/// Which incoming calls are rejected with 486 "Denied" (its
+/// "button" mode is [`CallSettings::dnd`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DenyIncoming {
+    /// None.
+    #[default]
+    Off,
+    /// Every call.
+    All,
+    /// Calls addressed to another user than the account's (`user`).
+    OtherUser,
+    /// Calls addressed to another domain than the account's (`domain`).
+    OtherDomain,
+    /// Calls from another domain than the account's (`remotedomain`).
+    RemoteDomain,
+    /// Calls addressed to another user or domain (`userdomain`).
+    OtherUserOrDomain,
+}
+
+/// Features a provider may not support. They start on for generic SIP
+/// providers; JioFiber/AirFiber lines can turn presence, messages and
+/// transfer off in Settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FeatureSettings {
+    /// Contacts' presence (SUBSCRIBE). Off: nothing is subscribed and
+    /// presence isn't shown; contacts keep their presence choice.
+    pub presence: bool,
+    /// Text messages (MESSAGE). Off: the Messages page is hidden and incoming
+    /// messages are dropped.
+    pub messages: bool,
+    /// Call transfer (REFER). Off: the call screen has no Transfer button.
+    pub transfer: bool,
+    /// Video calls. Off: no video is offered or accepted and the video
+    /// buttons are hidden.
+    pub video: bool,
+}
+
+impl Default for FeatureSettings {
+    fn default() -> Self {
+        Self { presence: true, messages: true, transfer: true, video: true }
+    }
+}
+
+/// A speed-dial button.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Shortcut {
+    pub label: String,
+    pub number: String,
+    /// With one, the button toggles: the next press uses this number, the
+    /// one after the first again (e.g. log in/out codes).
+    pub number2: String,
+    pub action: ShortcutAction,
+    /// Watch the number's presence (BLF); a ringing number is picked up.
+    pub presence: bool,
+}
+
+/// What a speed-dial button does with its number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShortcutAction {
+    #[default]
+    Call,
+    VideoCall,
+    Message,
+    /// Send the number as DTMF in the current call.
+    Dtmf,
+    /// Transfer the current call to it.
+    Transfer,
+    /// Call it, to connect the current call to it afterwards.
+    AttendedTransfer,
+    /// Call it and join it to the current call once answered.
+    Conference,
+}
+
+/// Call recording. Always WAV.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordingSettings {
+    /// Folder for recordings; empty for "Softcaller Recordings" in Documents.
+    pub folder: String,
+    /// Record every call once it's answered.
+    pub auto: bool,
+    /// Show the Record button during calls.
+    pub button: bool,
+}
+
+impl Default for RecordingSettings {
+    fn default() -> Self {
+        Self { folder: String::new(), auto: false, button: true }
+    }
+}
+
+impl RecordingSettings {
+    /// Where recordings go: the chosen folder, or Documents\Softcaller Recordings.
+    pub fn dir(&self) -> std::path::PathBuf {
+        if !self.folder.trim().is_empty() {
+            return self.folder.trim().into();
+        }
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(std::path::PathBuf::from).unwrap_or_default();
+        home.join("Documents").join("Softcaller Recordings")
+    }
+}
+
+/// Camera and bitrate.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VideoSettings {
+    /// Camera name as pjsua reports it; empty for the default camera.
+    pub camera: String,
+    /// H.264 bitrate in kbit/s; 0 keeps the codec's default.
+    pub bitrate_kbps: u32,
+}
+
+impl Default for CallSettings {
+    fn default() -> Self {
+        Self {
+            dtmf_method: DtmfMethod::Auto,
+            local_dtmf: true,
+            call_waiting: true,
+            max_concurrent_calls: 0,
+            bring_to_front: true,
+            caller_popup: true,
+            no_ignore: false,
+            pickup_code: "**".into(),
+            transfer_code: "##".into(),
+            use_transfer_code: false,
+            attended_code: "*2".into(),
+            use_attended_code: false,
+            dnd: false,
+            deny_incoming: DenyIncoming::Off,
+            auto_answer: false,
+            auto_answer_on_request: false,
+            auto_answer_delay: 0,
+            auto_answer_numbers: String::new(),
+            auto_answer_when: AutoAnswerWhen::NoOtherCalls,
+            forwarding: false,
+            forwarding_number: String::new(),
+            forwarding_delay: 0,
+            auto_hangup: 0,
+            media_keys: false,
+            headset: false,
+        }
+    }
+}
+
+/// Splits a server list (`;`, `,` or whitespace separated).
+pub fn split_list(list: &str) -> Vec<String> {
+    list.split(|c: char| c == ';' || c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()).map(str::to_owned).collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UiSettings {
+    pub theme: ThemePreference,
+    /// Draw Softcaller's own title bar instead of the system frame.
+    pub custom_titlebar: bool,
+    /// The left sidebar is collapsed to icons only.
+    pub sidebar_collapsed: bool,
+    /// Closing the window keeps Softcaller running in the tray.
+    pub close_to_tray: bool,
+    /// Start in the tray without opening the window.
+    pub start_minimized: bool,
+    pub window: WindowGeometry,
+    /// egui zoom factor (Ctrl +/-).
+    pub zoom: f32,
+    /// The default window height already applied to a saved size (see
+    /// [`Settings::grow_window_to_default`]); 0 in files from before it.
+    #[serde(default)]
+    pub applied_default_height: f32,
+    /// The default window width already applied to a saved size; 0 in files
+    /// from before the sidebar.
+    #[serde(default)]
+    pub applied_default_width: f32,
+}
+
+/// The main window's default size, logical pixels: the compact width of the
+/// Softcaller design, with room for the sidebar and a call card.
+pub const DEFAULT_WINDOW_SIZE: [f32; 2] = [718.0, 655.0];
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            theme: ThemePreference::System,
+            custom_titlebar: true,
+            sidebar_collapsed: false,
+            close_to_tray: true,
+            start_minimized: false,
+            window: WindowGeometry::default(),
+            zoom: 1.0,
+            applied_default_height: DEFAULT_WINDOW_SIZE[1],
+            applied_default_width: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemePreference {
+    /// Follow the operating system's light/dark appearance.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// The main window's last size and place, in logical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowGeometry {
+    pub size: Option<[f32; 2]>,
+    pub position: Option<[f32; 2]>,
+    pub maximized: bool,
+}
+
+#[derive(Debug)]
+pub enum LoadError {
+    Io(io::Error),
+    Parse(toml::de::Error),
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "cannot read settings: {e}"),
+            Self::Parse(e) => write!(f, "settings file is invalid: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+impl Settings {
+    pub fn active(&self) -> Option<&Account> {
+        let id = self.active_account?;
+        self.accounts.iter().find(|a| a.id == id)
+    }
+
+    pub fn account(&self, id: u32) -> Option<&Account> {
+        self.accounts.iter().find(|a| a.id == id)
+    }
+
+    /// Adds `account` with a fresh id and returns the id. The first account
+    /// becomes the active one.
+    pub fn add_account(&mut self, mut account: Account) -> u32 {
+        let id = self.accounts.iter().map(|a| a.id).max().map_or(1, |m| m + 1);
+        account.id = id;
+        self.accounts.push(account);
+        if self.active_account.is_none() {
+            self.active_account = Some(id);
+        }
+        id
+    }
+
+    /// Replaces the account with the same id. Returns false if there is none.
+    pub fn update_account(&mut self, account: Account) -> bool {
+        match self.accounts.iter_mut().find(|a| a.id == account.id) {
+            Some(slot) => {
+                *slot = account;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Removes an account; if it was active, the first remaining one takes over.
+    pub fn remove_account(&mut self, id: u32) -> Option<Account> {
+        let index = self.accounts.iter().position(|a| a.id == id)?;
+        let removed = self.accounts.remove(index);
+        if self.active_account == Some(id) {
+            self.active_account = self.accounts.first().map(|a| a.id);
+        }
+        Some(removed)
+    }
+
+    /// Once per new default size: a saved window narrower or shorter than the
+    /// default grows to it (a window made smaller afterwards stays so).
+    /// Returns whether the settings changed.
+    pub fn grow_window_to_default(&mut self) -> bool {
+        let [default_width, default_height] = DEFAULT_WINDOW_SIZE;
+        let mut changed = false;
+        if self.ui.applied_default_width < default_width {
+            self.ui.applied_default_width = default_width;
+            if let Some(size) = &mut self.ui.window.size
+                && size[0] < default_width
+            {
+                size[0] = default_width;
+                changed = true;
+            }
+        }
+        if self.ui.applied_default_height < default_height {
+            self.ui.applied_default_height = default_height;
+            if let Some(size) = &mut self.ui.window.size
+                && size[1] < default_height
+            {
+                size[1] = default_height;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Reads `path`. A missing file gives the defaults.
+    pub fn load(path: &Path) -> Result<Self, LoadError> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => Self::from_toml(&text),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(LoadError::Io(e)),
+        }
+    }
+
+    pub fn from_toml(text: &str) -> Result<Self, LoadError> {
+        toml::from_str(text).map_err(LoadError::Parse)
+    }
+
+    pub fn to_toml(&self) -> String {
+        toml::to_string_pretty(self).expect("settings always serialize")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips() {
+        let mut s = Settings::default();
+        s.ui.theme = ThemePreference::Dark;
+        s.ui.window = WindowGeometry { size: Some([400.0, 700.0]), position: Some([10.0, 20.0]), maximized: false };
+        s.ui.zoom = 1.25;
+        assert_eq!(Settings::from_toml(&s.to_toml()).unwrap(), s);
+    }
+
+    #[test]
+    fn partial_file_takes_defaults() {
+        let s = Settings::from_toml("[ui]\ntheme = \"light\"\nsomething_new = 1\n").unwrap();
+        assert_eq!(s.ui.theme, ThemePreference::Light);
+        assert!(s.ui.close_to_tray);
+        assert_eq!(s.ui.zoom, 1.0);
+    }
+
+    #[test]
+    fn sidebar_collapse_setting_round_trips() {
+        assert!(!Settings::default().ui.sidebar_collapsed);
+        let s = Settings::from_toml("[ui]\nsidebar_collapsed = true\n").unwrap();
+        assert!(s.ui.sidebar_collapsed);
+        assert!(Settings::from_toml(&s.to_toml()).unwrap().ui.sidebar_collapsed);
+    }
+
+    #[test]
+    fn provider_defaults() {
+        let s = Settings::default();
+        assert_eq!(
+            s.sip.audio_codecs,
+            "PCMA/8000/1 PCMU/8000/1 G722/16000/1 opus/48000/2 AMR-WB/16000/1 AMR/8000/1"
+        );
+        assert_eq!(s.features, FeatureSettings { presence: true, messages: true, transfer: true, video: true });
+        // Saved choices still win.
+        let saved = Settings::from_toml("[features]
+messages = false
+").unwrap();
+        assert!(!saved.features.messages && saved.features.presence);
+    }
+
+    #[test]
+    fn missing_file_is_default() {
+        let s = Settings::load(Path::new("definitely/not/here/settings.toml")).unwrap();
+        assert_eq!(s, Settings::default());
+    }
+
+    #[test]
+    fn accounts_add_update_remove() {
+        let mut s = Settings::default();
+        let a = s.add_account(Account { username: "a".into(), ..Account::default() });
+        let b = s.add_account(Account { username: "b".into(), ..Account::default() });
+        assert_eq!((a, b), (1, 2));
+        assert_eq!(s.active().unwrap().username, "a");
+        let mut edited = s.account(b).unwrap().clone();
+        edited.label = "B".into();
+        assert!(s.update_account(edited));
+        s.remove_account(a);
+        assert_eq!(s.active().unwrap().label, "B");
+        s.remove_account(b);
+        assert_eq!(s.active_account, None);
+        // Ids aren't reused while accounts exist, so stored passwords don't mix.
+        let c = s.add_account(Account::default());
+        assert_eq!(c, 1);
+    }
+
+    #[test]
+    fn accounts_round_trip_without_passwords() {
+        let mut s = Settings::default();
+        s.add_account(Account { username: "1001".into(), password: "pw".into(), ..Account::default() });
+        let text = s.to_toml();
+        assert!(!text.contains("pw\""), "{text}");
+        let back = Settings::from_toml(&text).unwrap();
+        assert_eq!(back.active().unwrap().username, "1001");
+        assert!(back.active().unwrap().password.is_empty());
+    }
+
+    #[test]
+    fn server_lists_split_on_separators() {
+        assert_eq!(split_list("stun.a.com:3478; stun.b.com,stun.c.com  "), ["stun.a.com:3478", "stun.b.com", "stun.c.com"]);
+        assert!(split_list(" ").is_empty());
+    }
+
+    #[test]
+    fn call_settings_have_defaults() {
+        let c = Settings::from_toml("[calls]
+dtmf_method = \"sip-info\"").unwrap().calls;
+        assert_eq!(c.dtmf_method, DtmfMethod::SipInfo);
+        assert!(c.local_dtmf && c.call_waiting && c.bring_to_front && !c.no_ignore);
+        assert_eq!(c.max_concurrent_calls, 0);
+    }
+
+    #[test]
+    fn audio_devices_default_to_the_system() {
+        let a = Settings::from_toml("[audio]
+output_device = \"Speakers (Realtek)\"").unwrap().audio;
+        assert_eq!(a.output_device, "Speakers (Realtek)");
+        assert!(a.input_device.is_empty() && a.ring_device.is_empty());
+        assert_eq!((a.volume_output, a.volume_input, a.volume_ring), (100, 100, 100));
+    }
+
+    #[test]
+    fn saved_windows_grow_once_to_the_default() {
+        let mut old = Settings::from_toml("[ui.window]
+size = [340.0, 609.6]
+").unwrap();
+        assert!(old.grow_window_to_default());
+        assert_eq!(old.ui.window.size, Some(DEFAULT_WINDOW_SIZE), "grows to the sidebar-friendly default");
+        old.ui.window.size = Some([340.0, 600.0]);
+        assert!(!old.grow_window_to_default(), "a later choice stays");
+        let mut fresh = Settings::default();
+        assert!(!fresh.grow_window_to_default());
+        let mut tall = Settings::from_toml("[ui.window]
+size = [400.0, 900.0]
+").unwrap();
+        tall.grow_window_to_default();
+        assert_eq!(tall.ui.window.size, Some([DEFAULT_WINDOW_SIZE[0], 900.0]), "width grows, a chosen height stays");
+    }
+
+    #[test]
+    fn invalid_file_is_an_error() {
+        assert!(matches!(Settings::from_toml("[ui]\ntheme = 5"), Err(LoadError::Parse(_))));
+    }
+}

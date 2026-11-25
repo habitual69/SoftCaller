@@ -1,0 +1,17 @@
+# pjproject's prebuilt library is compiled with /MT (static CRT), so Rust
+# must link the static CRT as well.
+# LNK4286 is harmless: the MinGW-built libvo-amrwbenc.a imports
+# __acrt_iob_func, which the static CRT defines locally.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/IGNORE:4286"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/IGNORE:4286"]
+
+# Defaults for local builds. Override them by setting the variables in the environment.
+[env]
+PJPROJECT_DIR = { value = "../pjproject", relative = true, force = false }
+SOFTCALLER_DEPS_DIR = { value = "../../deps", relative = true, force = false }
+# Regenerating bindings (`--features pjsua-sys/regen`) needs libclang. On
+# Windows set LIBCLANG_PATH, e.g. to Visual Studio's `VC\Tools\Llvm\x64\bin`;
+# Linux and macOS find it themselves.

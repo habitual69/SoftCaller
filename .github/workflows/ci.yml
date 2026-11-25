@@ -1,0 +1,154 @@
+# Builds, tests and packages Softcaller on every platform in `platforms`, then
+# (for version tags) drafts a GitHub Release with the installers.
+#
+# Each platform runs its own chain (platform.yml: dependencies -> pjproject
+# -> test -> build and installers), called by a job of its own so the run's
+# graph shows one lane per platform. The chains are independent: one
+# platform failing doesn't stop the others. Only the release needs them all.
+#
+# Only what a push changed is built (.github/scripts/changed-platforms.sh):
+# shared code builds every platform, platform-specific files only theirs,
+# and documentation nothing. Tags and new branches build all; a manual run
+# builds the platforms it's given.
+name: CI
+
+on:
+  push:
+    # A push of only these doesn't start the workflow (path filters don't
+    # apply to tags).
+    paths-ignore:
+      - "**.md"
+      - LICENSE
+      - .gitignore
+      - .gitattributes
+  # Run by hand from the Actions tab, for every platform or one.
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build
+        type: choice
+        default: all
+        options: [all, windows-x64, windows-arm64, linux-x64, linux-arm64, macos-arm64, macos-x64]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platforms:
+    name: platforms
+    runs-on: ubuntu-24.04
+    outputs:
+      # The platforms this run builds, e.g. ["linux-x64","linux-arm64"].
+      build: ${{ steps.changed.outputs.names }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Platforms the change needs
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+          CHOSEN: ${{ inputs.platforms }}
+        run: |
+          everything='["windows-x64","windows-arm64","linux-x64","linux-arm64","macos-arm64","macos-x64"]'
+          zero=0000000000000000000000000000000000000000
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ -n "$CHOSEN" ] && [ "$CHOSEN" != all ]; then
+            echo "manual run: building $CHOSEN"
+            names="[\"$CHOSEN\"]"
+          elif [ "$GITHUB_EVENT_NAME" != push ] || [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "$GITHUB_EVENT_NAME of $GITHUB_REF_NAME: building everything"
+            names=$everything
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "$zero" ] || ! git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+            echo "new branch or rewritten history: building everything"
+            names=$everything
+          else
+            git diff --name-only "$BEFORE" "$GITHUB_SHA" | tee /dev/stderr > changed.txt
+            names=$(bash .github/scripts/changed-platforms.sh < changed.txt)
+          fi
+          echo "building: $names"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+
+  # One job per platform (rather than a matrix, whose jobs a later job can
+  # only wait for all together). name: artifact/cache suffix; os: runner
+  # image; target: Rust target; source-deps: builds pjproject's
+  # dependencies from source.
+
+  windows-x64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"windows-x64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: windows-x64, os: windows-2025, target: x86_64-pc-windows-msvc, arch: x64, source-deps: true }
+    secrets: inherit
+
+  windows-arm64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"windows-arm64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: windows-arm64, os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: arm64, source-deps: true }
+    secrets: inherit
+
+  linux-x64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"linux-x64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, arch: x64 }
+    secrets: inherit
+
+  linux-arm64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"linux-arm64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: linux-arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, arch: arm64 }
+    secrets: inherit
+
+  macos-arm64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"macos-arm64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: macos-arm64, os: macos-15, target: aarch64-apple-darwin, arch: arm64 }
+    secrets: inherit
+
+  macos-x64:
+    needs: platforms
+    if: contains(needs.platforms.outputs.build, '"macos-x64"')
+    uses: ./.github/workflows/platform.yml
+    with: { name: macos-x64, os: macos-15-intel, target: x86_64-apple-darwin, arch: x64 }
+    secrets: inherit
+
+  # Version tags: v0.1.0 publishes a GitHub Release.
+  release:
+    name: release
+    # Every platform's installers, so a failing chain blocks the release.
+    needs: [windows-x64, windows-arm64, linux-x64, linux-arm64, macos-arm64, macos-x64]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches the version
+        id: version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "softcaller-app") | .version')
+          tagged=${GITHUB_REF_NAME#v}
+          if [ "$tagged" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the version $version in Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: release
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ls -la release
+          gh release create "$GITHUB_REF_NAME" release/* --latest --generate-notes --title "Softcaller $VERSION"

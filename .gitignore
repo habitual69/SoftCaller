@@ -1,0 +1,15 @@
+/target
+/dist
+
+# Local test configs and logs (contain credentials / phone numbers)
+softcaller-cli.toml
+*.log
+
+# Made on macOS when packaging (packaging/macos/icns.sh)
+/packaging/icons/*.icns
+Design.md
+Memory.md
+Architecture.md
+PRD.md
+Rules.md
+Phases.md

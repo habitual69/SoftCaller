@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c4a41"/>
+      <stop offset="1" stop-color="#1e342d"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1f7ed"/>
+      <stop offset="1" stop-color="#d9e7d5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#243e36"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
+
+  <!-- The mist of the forest at dawn, kept very faint. -->
+  <path d="M-60 760 C 170 670, 360 860, 620 760 S 940 690, 1084 790 L 1084 1084 L -60 1084 Z" fill="#f1f7ed" opacity="0.05"/>
+  <path d="M-60 860 C 220 780, 440 930, 700 840 S 990 780, 1084 870 L 1084 1084 L -60 1084 Z" fill="#f1f7ed" opacity="0.04"/>
+
+  <!-- Lucide "phone" (ISC), scaled into the tile. -->
+  <g transform="translate(150 150) scale(30)" fill="none" stroke="#7ca982" stroke-width="2.1"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"/>
+  </g>
+
+  <!-- A leaf grows from the handset: "soft" + "forest". -->
+  <g transform="translate(690 175) rotate(38)">
+    <path d="M0 0 C 95 -78, 230 -70, 285 25 C 185 95, 55 85, 0 0 Z" fill="url(#leaf)"/>
+    <path d="M22 16 C 100 6, 180 14, 250 30" fill="none" stroke="#243e36" stroke-width="10"
+          stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>

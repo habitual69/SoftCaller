@@ -1,0 +1,123 @@
+[package]
+name = "softcaller-app"
+description = "Softcaller softphone"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "softcaller"
+path = "src/main.rs"
+
+# Installers, built by `cargo packager -p softcaller-app --release` (see
+# packaging/README.md). Paths are relative to this crate.
+[package.metadata.packager]
+product-name = "Softcaller"
+identifier = "io.github.habitual69.softcaller"
+publisher = "habitual69"
+authors = ["habitual69"]
+# Shown by the NSIS and MSI installers.
+license-file = "../../LICENSE"
+description = "Softcaller — a SIP softphone for every provider"
+homepage = "https://github.com/habitual69/softcaller"
+category = "Business"
+# softcaller.icns is made on macOS from the PNGs (packaging/macos/icns.sh).
+icons = ["../../packaging/icons/*.png", "../../packaging/icons/softcaller.ico", "../../packaging/icons/*.icns"]
+# The runtime DLLs next to softcaller.exe on Windows (nothing matches elsewhere).
+resources = ["../../target/release/*.dll"]
+# sip:/tel:/callto: links: Windows installers register them (as the
+# in-app setting does), the Linux desktop entry and the macOS Info.plist
+# declare them.
+deep-link-protocols = [{ schemes = ["sip", "tel", "callto"], role = "viewer" }]
+
+[package.metadata.packager.nsis]
+# Per user, no administrator rights, like the in-app link registration.
+installer-mode = "currentUser"
+installer-icon = "../../packaging/icons/softcaller.ico"
+appdata-paths = ["$APPDATA/habitual69/Softcaller", "$LOCALAPPDATA/habitual69/Softcaller"]
+
+[package.metadata.packager.wix]
+# cargo-packager's MSI template with ARM64 support.
+template = "../../packaging/windows/main.wxs"
+
+[package.metadata.packager.deb]
+package-name = "softcaller"
+section = "comm"
+# Also used for the AppImage: Network/Telephony rather than the category's "Office".
+desktop-template = "../../packaging/linux/softcaller.desktop"
+# Ubuntu 24.04 / Debian 13 names, with the older (pre-t64) alternatives.
+# The window libraries (xkbcommon, Wayland, Xcursor, EGL) are loaded at run
+# time, so ldd doesn't list them.
+depends = [
+  "libc6", "libgcc-s1", "libssl3t64 | libssl3", "libsdl2-2.0-0", "libopenh264-7",
+  "libopencore-amrnb0", "libopencore-amrwb0", "libvo-amrwbenc0",
+  "libasound2t64 | libasound2", "libv4l-0t64 | libv4l-0", "libuuid1", "libudev1", "libdbus-1-3",
+  "libx11-6", "libxss1", "libxcursor1", "libxkbcommon0", "libxkbcommon-x11-0", "libwayland-client0", "libegl1",
+]
+
+[package.metadata.packager.appimage]
+# AppImages don't install dependencies: linuxdeploy bundles the shared
+# libraries the binary links; these are loaded at run time instead.
+libs = ["libxkbcommon.so.0", "libxkbcommon-x11.so.0", "libwayland-client.so.0", "libwayland-cursor.so.0", "libwayland-egl.so.1", "libXcursor.so.1", "libXi.so.6", "libXrandr.so.2"]
+
+[package.metadata.packager.macos]
+minimum-system-version = "13.0"
+info-plist-path = "../../packaging/macos/Info.plist"
+entitlements = "../../packaging/macos/entitlements.plist"
+
+[dependencies]
+softcaller-core.workspace = true
+sip-engine.workspace = true
+egui.workspace = true
+eframe.workspace = true
+egui_extras.workspace = true
+log.workspace = true
+fastframe-shell.workspace = true
+fastframe-tray.workspace = true
+fastframe-instance.workspace = true
+fastframe-fonts.workspace = true
+fastframe-text.workspace = true
+fastframe-icons.workspace = true
+fastframe-theme.workspace = true
+fastframe-titlebar.workspace = true
+fastframe-log.workspace = true
+fastframe-dirs.workspace = true
+fastframe-file.workspace = true
+fastframe-power.workspace = true
+fastframe-notifications.workspace = true
+fastframe-dock.workspace = true
+fastframe-autostart.workspace = true
+softcaller-win.workspace = true
+fastframe-now-playing.workspace = true
+if-addrs = "0.15"
+resvg = "0.45"
+egui_plot = "0.37"
+realfft = "3.5"
+jiff = "0.2"
+rfd = "0.17.2"
+ureq = "3.4.2"
+user-idle = "0.6.0"
+hidapi = "2.6.7"
+# JioFiber/AirFiber router: its self-signed HTTPS (with ureq's ring
+# backend), the default gateway, and this computer's name.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+percent-encoding = "2"
+netdev = "0.46"
+gethostname = "1"
+
+[dev-dependencies]
+egui_kittest = "0.36.1"
+
+[build-dependencies]
+winresource = "0.1.34"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[target."cfg(windows)".dependencies]
+winreg = "0.56.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+softcaller-mac.workspace = true

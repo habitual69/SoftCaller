@@ -1,0 +1,76 @@
+# Builds Softcaller for every supported platform on demand.
+#
+# `ci.yml` builds only the platforms a push changed and handles version
+# tags/releases. This workflow is the explicit "build everything" button:
+# all six lanes always run, and each uploads its installers as the
+# `packages-<platform>` artifact.
+#
+# Run it from Actions -> Build all platforms -> Run workflow.
+name: Build all platforms
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-all-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-x64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: windows-x64
+      os: windows-2025
+      target: x86_64-pc-windows-msvc
+      arch: x64
+      source-deps: true
+    secrets: inherit
+
+  windows-arm64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: windows-arm64
+      os: windows-11-arm
+      target: aarch64-pc-windows-msvc
+      arch: arm64
+      source-deps: true
+    secrets: inherit
+
+  linux-x64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: linux-x64
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+      arch: x64
+    secrets: inherit
+
+  linux-arm64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: linux-arm64
+      os: ubuntu-24.04-arm
+      target: aarch64-unknown-linux-gnu
+      arch: arm64
+    secrets: inherit
+
+  macos-arm64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: macos-arm64
+      os: macos-15
+      target: aarch64-apple-darwin
+      arch: arm64
+    secrets: inherit
+
+  macos-x64:
+    uses: ./.github/workflows/platform.yml
+    with:
+      name: macos-x64
+      os: macos-15-intel
+      target: x86_64-apple-darwin
+      arch: x64
+    secrets: inherit

@@ -12,7 +12,7 @@
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-555)
 ![Architectures](https://img.shields.io/badge/arch-x64%20%7C%20ARM64-555)
 
-[Providers](#providers) · [Features](#features) · [How it works](#how-it-works) · [Build from source](#building-from-source) · [Design](#design)
+[Providers](#providers) · [Features](#features) · [How it works](#how-it-works) · [Build from source](#building-from-source) · [Design](#design) · [Website](https://habitual69.github.io/SoftCaller)
 
 </div>
 

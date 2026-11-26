@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoftCaller — A calm, fast SIP softphone</title>
+<meta name="description" content="SoftCaller is a free, open-source SIP softphone for every provider — home fiber line, office PBX, SIP trunk, or direct IP call. Voice and video, contacts, history, and a one-tap JioFiber/AirFiber setup. Windows, macOS & Linux.">
+<link rel="icon" href="https://raw.githubusercontent.com/habitual69/SoftCaller/main/packaging/icons/256x256.png">
+<style>
+  /* Theme tokens copied from the SoftCaller app itself (crates/softcaller-app/src/theme/mod.rs)
+     — "Green Enchanted Forest": deep pine, soft ivory text, muted teal accent. */
+  :root {
+    color-scheme: dark;
+    --bg: #243e36;
+    --panel: #1e342d;
+    --panel-2: #2c4a41;
+    --line: #45685b;
+    --line-soft: #35574c;
+    --text: #f1f7ed;
+    --muted: #9fb3a5;
+    --accent: #7ca982;
+    --accent-2: #95bd99;
+    --on-accent: #16261f;
+    --ok: #8fd19e;
+    --radius: 14px;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f1f7ed;
+    --panel: #e7f0e2;
+    --panel-2: #dce8d7;
+    --line: #b8cbb2;
+    --line-soft: #d0e0cb;
+    --text: #243e36;
+    --muted: #5f7a6d;
+    --accent: #4a7856;
+    --accent-2: #406b4b;
+    --on-accent: #f1f7ed;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---------- nav ---------- */
+  nav { border-bottom: 1px solid var(--line-soft); }
+  nav .wrap { display: flex; align-items: center; gap: 10px; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 17px; }
+  .brand:hover { text-decoration: none; }
+  .brand img { width: 28px; height: 28px; border-radius: 7px; }
+  nav .spacer { flex: 1; }
+  nav a.nav-link { color: var(--muted); font-size: 14px; margin-left: 18px; }
+  nav a.nav-link:hover { color: var(--text); text-decoration: none; }
+  .theme-btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+    border-radius: 99px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--text); }
+
+  /* ---------- hero ---------- */
+  header.hero { padding: 64px 0 40px; text-align: center; }
+  .badge {
+    display: inline-block; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--muted); border-radius: 99px; padding: 4px 14px; font-size: 13px; margin-bottom: 18px;
+  }
+  .badge b { color: var(--accent-2); font-weight: 600; }
+  h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .lede { color: var(--muted); font-size: 18px; max-width: 640px; margin: 0 auto 28px; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; background: var(--accent); color: var(--on-accent); font-weight: 700;
+    border-radius: var(--radius); padding: 12px 22px; font-size: 15px; border: 1px solid transparent;
+  }
+  .btn:hover { background: var(--accent-2); text-decoration: none; }
+  .btn.ghost { background: var(--panel); color: var(--text); border-color: var(--line); font-weight: 600; }
+  .btn.ghost:hover { background: var(--panel-2); }
+  .fineprint { color: var(--muted); font-size: 13px; margin-top: 16px; }
+
+  /* ---------- download cards ---------- */
+  section { padding: 28px 0; }
+  h2 { font-size: 22px; margin: 0 0 4px; }
+  .section-sub { color: var(--muted); margin: 0 0 18px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 17px; }
+  .card p { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .dl {
+    display: block; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; color: var(--text);
+  }
+  .dl:hover { border-color: var(--accent); text-decoration: none; }
+  .dl b { display: block; font-size: 14px; }
+  .dl span { color: var(--muted); font-size: 12px; }
+  .dl.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .dl.primary b { color: var(--on-accent); }
+  .dl.primary span { color: var(--on-accent); opacity: .75; }
+  .dl.primary:hover { background: var(--accent-2); }
+
+  /* ---------- features ---------- */
+  .feat h3 { margin: 0 0 6px; font-size: 16px; }
+  .feat h3 .dot { color: var(--accent); }
+  .feat p { color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* ---------- story / footer ---------- */
+  .story {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 28px; text-align: center;
+  }
+  .story h2 { margin-bottom: 8px; }
+  .story p { color: var(--muted); max-width: 560px; margin: 0 auto 18px; }
+  footer { border-top: 1px solid var(--line-soft); padding: 24px 0 40px; color: var(--muted); font-size: 13px; text-align: center; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="./">
+      <img src="https://raw.githubusercontent.com/habitual69/SoftCaller/main/packaging/icons/256x256.png" alt="SoftCaller icon">
+      SoftCaller
+    </a>
+    <div class="spacer"></div>
+    <a class="nav-link" href="https://github.com/habitual69/SoftCaller">GitHub</a>
+    <a class="nav-link" href="https://github.com/habitual69/SoftCaller/releases">Releases</a>
+    <button class="theme-btn" id="themeBtn" type="button">Light</button>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="badge">v0.1.0 &middot; <b>First release</b></div>
+    <h1>SoftCaller <span>&mdash; a calm, fast SIP softphone</span></h1>
+    <p class="lede">Turns your computer into a phone. Voice and video calls with any SIP provider &mdash; home fiber line, office PBX, SIP trunk, or a direct IP call. No lock-in, and your data stays on your machine.</p>
+    <div class="cta-row">
+      <a class="btn" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_x64-setup.exe">Download for Windows</a>
+      <a class="btn ghost" href="#download">All downloads</a>
+    </div>
+    <p class="fineprint">Free forever &middot; GPL-3.0 &middot; No ads, no paywall</p>
+  </header>
+
+  <section id="download">
+    <h2>Download</h2>
+    <p class="section-sub">Pick your platform. Every build below is v0.1.0, straight from the GitHub release.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Windows</h3>
+        <p>Windows 10 / 11. Per-user install, no administrator rights needed.</p>
+        <a class="dl primary" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_x64-setup.exe"><b>Installer, x64 (.exe)</b><span>Recommended &middot; 10 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_arm64-setup.exe"><b>Installer, ARM64 (.exe)</b><span>Windows on ARM &middot; 9 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_x64_en-US.msi"><b>MSI, x64</b><span>Managed / per-machine deploy &middot; 12 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_arm64_en-US.msi"><b>MSI, ARM64</b><span>Managed / per-machine deploy &middot; 11 MB</span></a>
+      </div>
+      <div class="card">
+        <h3>macOS</h3>
+        <p>macOS 13+, Apple Silicon or Intel. Unsigned build &mdash; first launch: right-click the app, then Open.</p>
+        <a class="dl primary" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/Softcaller_0.1.0_aarch64.dmg"><b>Disk image, Apple Silicon (.dmg)</b><span>Drag to Applications &middot; 16 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/Softcaller_0.1.0_x64.dmg"><b>Disk image, Intel (.dmg)</b><span>Drag to Applications &middot; 17 MB</span></a>
+      </div>
+      <div class="card">
+        <h3>Linux</h3>
+        <p>Ubuntu 24.04+ / Debian 13+ for the .deb, or AppImage anywhere.</p>
+        <a class="dl primary" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_amd64.deb"><b>Debian package, x64 (.deb)</b><span>sudo apt install &middot; 16 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_arm64.deb"><b>Debian package, ARM64 (.deb)</b><span>sudo apt install &middot; 15 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_x86_64.AppImage"><b>AppImage, x64</b><span>chmod +x, then run &middot; 24 MB</span></a>
+        <a class="dl" href="https://github.com/habitual69/SoftCaller/releases/download/v0.1.0/softcaller_0.1.0_aarch64.AppImage"><b>AppImage, ARM64</b><span>chmod +x, then run &middot; 22 MB</span></a>
+      </div>
+    </div>
+    <p class="fineprint" style="margin-top:14px">First account: Settings &rarr; General &rarr; Accounts &mdash; add any SIP provider, or Connect JioFiber/AirFiber for a compatible router. When the status turns green (Registered), dial and call. &middot; <a href="https://github.com/habitual69/SoftCaller/releases">All releases</a></p>
+  </section>
+
+  <section>
+    <h2>Why SoftCaller</h2>
+    <p class="section-sub">Four things that make it different from the dozen other softphones.</p>
+    <div class="grid">
+      <div class="card feat">
+        <h3><span class="dot">&#9679;</span> JioFiber / AirFiber in one tap</h3>
+        <p>Connect JioFiber/AirFiber fetches your SIP credentials straight from a compatible home router &mdash; no hunting for server settings, usernames, or passwords.</p>
+      </div>
+      <div class="card feat">
+        <h3><span class="dot">&#9679;</span> Any SIP provider</h3>
+        <p>Hosted VoIP, Asterisk / FreeSWITCH / 3CX PBX, SIP trunk, or a direct IP call. Standard SIP throughout, so there is no provider lock-in.</p>
+      </div>
+      <div class="card feat">
+        <h3><span class="dot">&#9679;</span> Voice, video &amp; recording</h3>
+        <p>Voice and video calls with picture-in-picture, hold, transfer, conference, and call recording to WAV. Contacts, history, messaging, and presence included.</p>
+      </div>
+      <div class="card feat">
+        <h3><span class="dot">&#9679;</span> Your data stays local</h3>
+        <p>Settings live in TOML, contacts and history in SQLite, and passwords in your system&rsquo;s credential store &mdash; Windows Credential Manager, macOS Keychain, or the Secret Service on Linux. Never in a file.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="story">
+      <h2>Built in the open</h2>
+      <p>SoftCaller is free and open source (GPL-3.0), built in Rust on pjproject. Read the code, build it yourself, or file an issue &mdash; it all happens on GitHub.</p>
+      <a class="btn" href="https://github.com/habitual69/SoftCaller">Source on GitHub</a>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    SoftCaller v0.1.0 &middot; Free &amp; open source (GPL-3.0) &middot;
+    <a href="https://github.com/habitual69/SoftCaller">Source on GitHub</a> &middot;
+    <a href="https://github.com/habitual69/SoftCaller/issues">Report an issue</a><br>
+    First release &mdash; things may break. If something does, tell me; that&rsquo;s the fastest way it gets better.
+  </div>
+</footer>
+
+<script>
+  // Theme toggle mirrors the app's own light/dark switch.
+  var btn = document.getElementById('themeBtn');
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    btn.textContent = t === 'light' ? 'Dark' : 'Light';
+    try { localStorage.setItem('softcaller-site-theme', t); } catch (e) {}
+  }
+  btn.addEventListener('click', function () {
+    setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+  });
+  try {
+    var saved = localStorage.getItem('softcaller-site-theme');
+    if (saved) setTheme(saved);
+  } catch (e) {}
+</script>
+</body>
+</html>
